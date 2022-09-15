@@ -7,20 +7,34 @@ struct Stem{
     current_pos: i32,
     origin_pos: i32,
     colour: i32,
+    dir: bool,
 }
 
-fn wiggle(handle: &mut ThreadRng, stem: i32, bredth: i32)-> i32{
-    let pos: i32 = handle.gen_range(-1..=1);
+fn wiggle(handle: &mut ThreadRng, stem: &Stem, bredth: i32, depth: i32, completed: i32)-> (i32, bool){
+    let (dir, weight) =
+        if completed >= (depth/2){
+            if stem.current_pos > stem.origin_pos{ (false, 4) }
+            else { (true, 4) }
+        }
+        else{(stem.dir, 2) };
 
-    let stem_new = stem+pos;
+    let mut pos: i32 = 
+        if stem.dir{ handle.gen_range(-1..=weight) }
+        else{ handle.gen_range(-weight..=1) };
+    pos = 
+        if pos > 0{ 1 }
+        else if pos < 0{ -1 }
+        else{ 0 };
+
+    let stem_new = stem.current_pos+pos;
     if stem_new < 0{
-        0
+        (1, true)
     }
     else if stem_new >= bredth{
-        bredth-1
+        (bredth-1, false)
     }
     else{
-        stem_new
+        (stem_new, dir)
     }
 }
 
@@ -36,6 +50,7 @@ fn animation(depth: &mut i32, bredth: &mut i32, frequency: &mut i32, number: &mu
             current_pos: pos,
             origin_pos: pos,
             colour: colour_curr,
+            dir: handle.gen_ratio(1, 2)
         }
     }).collect::<Vec<Stem>>();
 
@@ -44,39 +59,27 @@ fn animation(depth: &mut i32, bredth: &mut i32, frequency: &mut i32, number: &mu
             let mut stems_new = Vec::<Stem>::new();
             let mut output = (0..*bredth).map(|_| (" ", 0)).collect::<Vec<(&str, i32)>>();
 
+            let num_stems = stems.len() as i32;
             for stem in &mut stems{
-                let change = wiggle(&mut handle, stem.current_pos, *bredth);
+                let (change_pos, change_dir) = wiggle(&mut handle, stem, *bredth, *depth, completed);
 
-                if *depth-completed > (stem.current_pos-stem.origin_pos).abs(){
-                    if 0_i32 == handle.gen_range(0..*frequency){
-                        if output[change as usize].0 == " "{
-                            stem.current_pos = change;
-                            output[stem.current_pos as usize] = ("o", stem.colour);
-                            colour_curr = (colour_curr+1)%6;
+                if 0_i32 == handle.gen_range(0..*frequency) && num_stems < *bredth{
+                    stem.current_pos = change_pos;
+                    stem.dir = change_dir;
+                    output[stem.current_pos as usize] = ("o", stem.colour);
+                    colour_curr = (colour_curr+1)%6;
 
-                            stems_new.push(Stem{
-                                current_pos: wiggle(&mut handle, stem.current_pos, *bredth),
-                                origin_pos: stem.origin_pos,
-                                colour: colour_curr,
-                            });
-                        }
-                    }
-                    else{
-                        if output[change as usize].0 == " "{
-                            stem.current_pos = change;
-                        }
-                        
-                        output[stem.current_pos as usize] = ("|", stem.colour);
-                    }
-                } 
+                    stems_new.push(Stem{
+                        current_pos: wiggle(&mut handle, stem, *bredth, *depth, completed).0,
+                        origin_pos: stem.origin_pos,
+                        colour: colour_curr,
+                        dir: handle.gen_ratio(1, 2)
+                    });
+                }
                 else{
-                    if stem.current_pos > stem.origin_pos{
-                        stem.current_pos -= 1;
-                    }
-                    else{
-                        stem.current_pos += 1;
-                    }
-
+                    stem.current_pos = change_pos;
+                    stem.dir = change_dir;
+                    
                     output[stem.current_pos as usize] = ("|", stem.colour);
                 }
             }
@@ -101,6 +104,7 @@ fn animation(depth: &mut i32, bredth: &mut i32, frequency: &mut i32, number: &mu
         }
 
         stems.drain((*number as usize)..stems.len());
+        stems.iter_mut().for_each(|x| x.current_pos = x.origin_pos );
     }
 }
 
@@ -198,7 +202,7 @@ fn parser(depth: &mut i32, bredth: &mut i32, frequency: &mut i32, number: &mut i
 }
 
 fn main() {
-    let (mut depth, mut bredth, mut frequency, mut number, mut speed) = (100, 100, 50, 5, 50);
+    let (mut depth, mut bredth, mut frequency, mut number, mut speed) = (100, termsize::get().unwrap().cols as i32, 50, 5, 50);
 
     parser(&mut depth, &mut bredth, &mut frequency, &mut number, &mut speed);
     animation(&mut depth, &mut bredth, &mut frequency, &mut number, &mut speed);
